@@ -1,11 +1,6 @@
-'''
-Clasificación de Flores Utilizando Transferencia de Aprendizaje
-Este proyecto implementa un modelo de clasificación de imágenes multiclase utilizando técnicas de fine-tuning sobre una red neuronal preentrenada. 
-El objetivo es clasificar imágenes en un amplio número de categorías (más de 100 clases).
-
-Kaggle: https://www.kaggle.com/code/mgorner/getting-started-with-100-flowers-on-tpu/input
-'''
-
+"""
+# Librerías
+"""
 
 import math, re, os, zipfile
 import pandas as pd
@@ -17,12 +12,16 @@ print("Tensorflow version " + tf.__version__)
 from tensorflow.keras import layers
 from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
 
+"""# Extraer directorios de .zip"""
+
 # Ruta del archivo ZIP
 zip_path = 'C:/Users/Sebastian/Documents/GitHub/clasificacion_flores/data/raw/flower-classification-with-tpus.zip'
 
 # Extraer el contenido
 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
     zip_ref.extractall('C:/Users/Sebastian/Documents/GitHub/clasificacion_flores/data/raw')
+
+"""# Variables y ubicaciones"""
 
 # ==== Configuración de variables ====
 
@@ -43,10 +42,9 @@ ds_path = 'C:/Users/Sebastian/Documents/GitHub/clasificacion_flores/data/raw/tfr
 
 train_files = tf.io.gfile.glob(f"{ds_path}/train/*.tfrec")
 val_files = tf.io.gfile.glob(f"{ds_path}/val/*.tfrec")
-test_files = tf.io.gfile.glob(f"{ds_path}/test/*.tfrec")                                                                                                                                    
+test_files = tf.io.gfile.glob(f"{ds_path}/test/*.tfrec")
 
-
-# ==== Funciones para resultados y visualización obtenidas del Kaggle ====
+"""# Función para visualización"""
 
 def display_confusion_matrix(cmat, score, precision, recall):
     plt.figure(figsize=(15,15))
@@ -70,21 +68,7 @@ def display_confusion_matrix(cmat, score, precision, recall):
     plt.show()
     plt.savefig('conf_mat.jpg')
 
-def display_training_curves(training, validation, title, subplot):
-    if subplot%10==1: # set up the subplots on the first call
-        plt.subplots(figsize=(10,10), facecolor='#F0F0F0')
-        plt.tight_layout()
-    ax = plt.subplot(subplot)
-    ax.set_facecolor('#F8F8F8')
-    ax.plot(training)
-    ax.plot(validation)
-    ax.set_title('model '+ title)
-    ax.set_ylabel(title)
-    #ax.set_ylim(0.28,1.05)
-    ax.set_xlabel('epoch')
-    ax.legend(['train', 'valid.'])
-    plt.savefig('training_curves.jpg')
-
+"""# Funciones Preprocesamiento"""
 
 # ==== Funciones para manejo de datos obtenidas del Kaggle ====
 
@@ -180,6 +164,7 @@ train = get_training_dataset()
 val = get_validation_dataset()
 test = get_test_dataset()
 
+"""# Modelo"""
 
 # ==== Transferencia de aprendizaje ====
 # Modelo utilizado: EfficientNetV2 (B0)
@@ -200,7 +185,7 @@ base_model.trainable = False
 model = tf.keras.Sequential([
     base_model,
     layers.Dense(256, activation='relu'),
-    layers.Dropout(0.3), 
+    layers.Dropout(0.3),
     layers.Dense(len(classes), activation='softmax')
     ])
 
@@ -221,16 +206,37 @@ history = model.fit(
 )
 
 # Visualización antes de fine-tuning
-display_training_curves(
-    history.history['sparse_categorical_accuracy'],
-    history.history['val_sparse_categorical_accuracy'],
-    'accuracy', 211
-)
-display_training_curves(
-    history.history['loss'],
-    history.history['val_loss'],
-    'loss', 212
-)
+# Grafica de accuracy
+def plot_hist(hist):
+    plt.plot(hist.history["sparse_categorical_accuracy"])
+    plt.plot(hist.history["val_sparse_categorical_accuracy"])
+    plt.title("Model Accuracy")
+    plt.ylabel("Accuracy")
+    plt.xlabel("Epoch")
+    plt.legend(["Train", "Validation"], loc="upper left")
+    plt.ylim((0,1.1))
+    plt.grid()
+    plt.show()
+    plt.savefig('accuracy.jpg')
+    plt.close()
+
+plot_hist(history)
+
+# Grafica de loss
+def plot_hist_loss(hist):
+    plt.plot(hist.history["loss"],'.r')
+    plt.plot(hist.history["val_loss"],'*b')
+    plt.title("Model Loss")
+    plt.ylabel("Loss")
+    plt.xlabel("Epoch")
+    plt.legend(["Train", "Validation"], loc="upper left")
+    #plt.ylim((0,1))
+    plt.grid()
+    plt.show()
+    plt.savefig('loss.jpg')
+    plt.close()
+
+plot_hist_loss(history)
 
 # Fine-tuning
 # Descongelar capas superiores
@@ -253,17 +259,37 @@ history_finetune = model.fit(
 )
 
 # Visualización despues de fine-tuning
-display_training_curves(
-    history_finetune.history['sparse_categorical_accuracy'],
-    history_finetune.history['val_sparse_categorical_accuracy'],
-    'accuracy (fine-tune)', 211
-)
-display_training_curves(
-    history_finetune.history['loss'],
-    history_finetune.history['val_loss'],
-    'loss (fine-tune)', 212
-)
+# Grafica de accuracy
+def plot_hist(hist):
+    plt.plot(hist.history["sparse_categorical_accuracy"])
+    plt.plot(hist.history["val_sparse_categorical_accuracy"])
+    plt.title("Model Accuracy (fine-tune)")
+    plt.ylabel("Accuracy")
+    plt.xlabel("Epoch")
+    plt.legend(["Train", "Validation"], loc="upper left")
+    plt.ylim((0,1.1))
+    plt.grid()
+    plt.show()
+    plt.savefig('accuracy_fine_tuning.jpg')
+    plt.close()
 
+plot_hist(history_finetune)
+
+# Grafica de loss
+def plot_hist_loss(hist):
+    plt.plot(hist.history["loss"],'.r')
+    plt.plot(hist.history["val_loss"],'*b')
+    plt.title("Model Loss (fine-tune)")
+    plt.ylabel("Loss")
+    plt.xlabel("Epoch")
+    plt.legend(["Train", "Validation"], loc="upper left")
+    #plt.ylim((0,1))
+    plt.grid()
+    plt.show()
+    plt.savefig('loss_fine_tuning.jpg')
+    plt.close()
+
+plot_hist_loss(history_finetune)
 
 # ==== Matriz de confusión ====
 
