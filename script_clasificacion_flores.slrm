@@ -11,5 +11,5 @@
 module load conda
 source activate ambiente_2
 
-python clasificacion_flores.py
+python clasificacion_flores_ocotillo.py
 
