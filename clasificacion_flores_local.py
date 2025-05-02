@@ -10,7 +10,7 @@ import seaborn as sns
 import tensorflow as tf
 print("Tensorflow version " + tf.__version__)
 from tensorflow.keras import layers
-from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
+from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix, classification_report
 
 """# Extraer directorios de .zip"""
 
@@ -66,7 +66,7 @@ def display_confusion_matrix(cmat, score, precision, recall):
     if len(titlestring) > 0:
         ax.text(101, 1, titlestring, fontdict={'fontsize': 18, 'horizontalalignment':'right', 'verticalalignment':'top', 'color':'#804040'})
     plt.show()
-    plt.savefig('conf_mat.jpg')
+    plt.savefig('cm.jpg')
 
 """# Funciones Preprocesamiento"""
 
@@ -291,30 +291,47 @@ def plot_hist_loss(hist):
 
 plot_hist_loss(history_finetune)
 
-# ==== Matriz de confusión ====
+# Test dataset
+test_ds = get_test_dataset(ordered=True)
 
-# Conjunto de validación en orden
-cmdataset = get_validation_dataset(ordered=True)
-
-# Separar imágenes y etiquetas
-images_ds = cmdataset.map(lambda image, label: image)
-labels_ds = cmdataset.map(lambda image, label: label).unbatch()
-
-# Etiquetas reales
-true_labels = next(iter(labels_ds.batch(num_val_images))).numpy()
+# Separar imágenes e ids
+test_images = test_ds.map(lambda image, idnum: image)
+test_ids = test_ds.map(lambda image, idnum: idnum)
 
 # Predicciones
-predicted_probabilities = model.predict(images_ds, steps=val_steps)
-predicted_labels = np.argmax(predicted_probabilities, axis=-1)
+test_pred_probs = model.predict(test_images, steps=test_steps)
+test_preds = np.argmax(test_pred_probs, axis=-1)
 
-# Métricas
-conf_matrix = confusion_matrix(true_labels, predicted_labels, labels=range(len(classes)))
-f1 = f1_score(true_labels, predicted_labels, labels=range(len(classes)), average='macro')
-precision = precision_score(true_labels, predicted_labels, labels=range(len(classes)), average='macro')
-recall = recall_score(true_labels, predicted_labels, labels=range(len(classes)), average='macro')
+# ids del conjunto de prueba
+ids = []
+for batch in test_ids:
+    for id in batch.numpy():
+        ids.append(id.decode("utf-8"))
 
-# Normalizar la matriz de confusión
-conf_matrix_normalized = (conf_matrix.T / conf_matrix.sum(axis=1)).T
+# DataFrame con las predicciones
+pred_df = pd.DataFrame({
+    'id': ids,
+    'label': test_preds
+})
 
-# Aplicamos función para graficar
-display_confusion_matrix(conf_matrix_normalized, f1, precision, recall)
+# Archivo output_submission.csv con los valores reales
+output_submission = pd.read_csv('C:/Users/Sebastian/Documents/GitHub/clasificacion_flores/data/raw/output_submission.csv')
+
+# Merge de DataFrames con etiquetas verdaderas y predicciones
+merged = pd.merge(output_submission, pred_df, on='id', how='inner')
+
+# Comparar las predicciones con las etiquetas verdaderas
+y_true = merged['label_x']  # Etiquetas verdaderas
+y_pred = merged['label_y']  # Predicciones
+
+print(confusion_matrix(y_true, y_pred, labels=range(len(classes))))
+print(classification_report(y_true, y_pred))
+
+cm = confusion_matrix(y_true, y_pred, labels=range(len(classes)))
+
+display_confusion_matrix(cm, score=None, precision=None, recall=None)
+
+cm = confusion_matrix(y_true, y_pred, labels=range(len(classes)))
+cm_norm = (cm.T / cm.sum(axis=1)).T
+
+display_confusion_matrix(cm_norm, score=None, precision=None, recall=None)
