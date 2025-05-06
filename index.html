@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clasificador de Flores</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f8ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        #camera-container {
+            position: relative;
+            width: 224px;
+            height: 224px;
+            margin: 20px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            border: 3px solid #4CAF50;
+        }
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        #controls {
+            display: flex;
+            gap: 12px;
+            margin: 15px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #4CAF50, #2E7D32);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 10px rgba(0,0,0,0.2);
+        }
+        button#switchCam {
+            background: linear-gradient(135deg, #2196F3, #0D47A1);
+        }
+        #result {
+            font-size: 20px;
+            padding: 15px 25px;
+            background: white;
+            border-radius: 25px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            margin-top: 15px;
+            min-width: 250px;
+            text-align: center;
+            border: 2px solid #e0e0e0;
+        }
+        h1 {
+            color: #2E7D32;
+            margin-bottom: 5px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        .subtitle {
+            color: #555;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        .emoji {
+            font-size: 24px;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌼 Clasificador de Flores 🌸</h1>
+    <p class="subtitle">Usando EfficientNetV2 - 224×224px</p>
+    
+    <div id="camera-container">
+        <video id="webcam" width="224" height="224" autoplay playsinline></video>
+    </div>
+    
+    <div id="controls">
+        <button id="switchCam">🔄 Cambiar Cámara</button>
+    </div>
+    
+    <div id="result">Cargando modelo TensorFlow.js...</div>
+
+    <script>
+        // 1. Lista completa de clases (104 flores)
+        const CLASSES = [
+            'pink primrose', 'hard-leaved pocket orchid', 'canterbury bells', 'sweet pea', 'wild geranium',
+            'tiger lily', 'moon orchid', 'bird of paradise', 'monkshood', 'globe thistle',
+            'snapdragon', "colt's foot", 'king protea', 'spear thistle', 'yellow iris',
+            'globe-flower', 'purple coneflower', 'peruvian lily', 'balloon flower', 'giant white arum lily',
+            'fire lily', 'pincushion flower', 'fritillary', 'red ginger', 'grape hyacinth',
+            'corn poppy', 'prince of wales feathers', 'stemless gentian', 'artichoke', 'sweet william',
+            'carnation', 'garden phlox', 'love in the mist', 'cosmos', 'alpine sea holly',
+            'ruby-lipped cattleya', 'cape flower', 'great masterwort', 'siam tulip', 'lenten rose',
+            'barberton daisy', 'daffodil', 'sword lily', 'poinsettia', 'bolero deep blue',
+            'wallflower', 'marigold', 'buttercup', 'daisy', 'common dandelion',
+            'petunia', 'wild pansy', 'primula', 'sunflower', 'lilac hibiscus',
+            'bishop of llandaff', 'gaura', 'geranium', 'orange dahlia', 'pink-yellow dahlia',
+            'cautleya spicata', 'japanese anemone', 'black-eyed susan', 'silverbush', 'californian poppy',
+            'osteospermum', 'spring crocus', 'iris', 'windflower', 'tree poppy',
+            'gazania', 'azalea', 'water lily', 'rose', 'thorn apple',
+            'morning glory', 'passion flower', 'lotus', 'toad lily', 'anthurium',
+            'frangipani', 'clematis', 'hibiscus', 'columbine', 'desert-rose',
+            'tree mallow', 'magnolia', 'cyclamen', 'watercress', 'canna lily',
+            'hippeastrum', 'bee balm', 'pink quill', 'foxglove', 'bougainvillea',
+            'camellia', 'mallow', 'mexican petunia', 'bromelia', 'blanket flower',
+            'trumpet creeper', 'blackberry lily', 'common tulip', 'wild rose'
+        ];
+
+        // 2. Variables de estado
+        let model;
+        let currentStream = null;
+        let facingMode = "environment"; // 'user' para frontal, 'environment' para trasera
+        let isPredicting = false;
+        const emojis = ['🌷', '🌸', '🌹', '🌺', '🌻', '🌼', '💐', '🏵️'];
+
+        // 3. Cargar modelo TensorFlow.js
+        async function loadModel() {
+            try {
+                document.getElementById('result').textContent = "Cargando modelo...";
+                model = await tf.loadLayersModel('modelo/model.json');
+                document.getElementById('result').textContent = "Modelo listo. Enfoca una flor con la cámara";
+                console.log("✅ Modelo cargado");
+                return true;
+            } catch (error) {
+                console.error("❌ Error al cargar el modelo:", error);
+                document.getElementById('result').textContent = "Error al cargar el modelo. Verifica la consola.";
+                return false;
+            }
+        }
+
+        // 4. Configurar cámara
+        async function setupCamera() {
+            stopCamera();
+            
+            const video = document.getElementById('webcam');
+            try {
+                const constraints = {
+                    video: {
+                        width: 224,
+                        height: 224,
+                        facingMode: facingMode,
+                        frameRate: { ideal: 30 }
+                    }
+                };
+                
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve(video);
+                    };
+                });
+            } catch (error) {
+                console.error("📷 Error en la cámara:", error);
+                document.getElementById('result').textContent = "No se pudo acceder a la cámara. Asegúrate de permitir los permisos.";
+                throw error;
+            }
+        }
+
+        // 5. Detener cámara
+        function stopCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+        }
+
+        // 6. Preprocesamiento para EfficientNetV2
+        function preprocessImage(image) {
+            return tf.tidy(() => {
+                // Convertir a tensor y redimensionar
+                const tensor = tf.browser.fromPixels(image)
+                    .resizeNearestNeighbor([224, 224])
+                    .toFloat();
+                
+                // Normalización específica para EfficientNetV2: [0,255] -> [-1,1]
+                return tensor.div(127.5).sub(1.0).expandDims(0);
+            });
+        }
+
+        // 7. Clasificar imagen
+        async function classifyImage() {
+            if (!model || isPredicting) return;
+            
+            isPredicting = true;
+            const video = document.getElementById('webcam');
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                const tensor = preprocessImage(video);
+                const predictions = await model.predict(tensor).data();
+                tensor.dispose();
+                
+                // Obtener resultados
+                const maxProb = Math.max(...predictions);
+                const classIndex = predictions.indexOf(maxProb);
+                const flowerName = CLASSES[classIndex];
+                const confidence = (maxProb * 100).toFixed(1);
+                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                
+                // Mostrar resultado
+                resultDiv.innerHTML = `
+                    <span class="emoji">${randomEmoji}</span>
+                    <strong>${flowerName}</strong><br>
+                    <small>Confianza: ${confidence}%</small>
+                `;
+                
+            } catch (error) {
+                console.error("🔮 Error en la predicción:", error);
+                resultDiv.textContent = "Error al clasificar la imagen";
+            } finally {
+                isPredicting = false;
+            }
+        }
+
+        // 8. Cambiar entre cámaras frontal/trasera
+        document.getElementById('switchCam').addEventListener('click', async () => {
+            facingMode = facingMode === "user" ? "environment" : "user";
+            document.getElementById('result').textContent = "Cambiando a cámara " + 
+                (facingMode === "user" ? "frontal..." : "trasera...");
+            await setupCamera();
+        });
+
+        // 9. Inicialización
+        (async function init() {
+            // Cargar modelo y cámara
+            const modelLoaded = await loadModel();
+            if (!modelLoaded) return;
+            
+            await setupCamera();
+            
+            // Iniciar bucle de predicción (cada 1.5 segundos)
+            setInterval(classifyImage, 1500);
+            
+            // Limpieza al cerrar
+            window.addEventListener('beforeunload', () => {
+                stopCamera();
+                if (model) model.dispose();
+            });
+        })();
+    </script>
+</body>
+</html>
