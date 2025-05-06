@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import tensorflow as tf
 print("Tensorflow version " + tf.__version__)
-from tensorflow.keras import layers
+from tensorflow.keras import Input, Model, layers
+from tensorflow.keras.applications import EfficientNetV2B0
 from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix, classification_report
 
 """# Variables y ubicaciones"""
@@ -161,33 +162,29 @@ test = get_test_dataset()
 # Modelo utilizado: EfficientNetV2 (B0)
 # Nos ofrece una arquitectura moderna optimizada para datasets medianos, y B0 (7.1M params) es rápido y suficiente.
 
-# Cargar modelo base (pre-entrenado)
-base_model = tf.keras.applications.EfficientNetV2B0(
-    include_top=False,
-    weights='imagenet',
-    input_shape=(224, 224, 3),
-    pooling='avg'  # GlobalAveragePooling2D
-    )
+# Entrada
+inputs = Input(shape=(224, 224, 3))
 
-# Congelar capas, luego descongelar para fine-tuning
+# Modelo base
+base_model = EfficientNetV2B0(include_top=False, weights='imagenet', input_tensor=inputs, pooling='avg')
 base_model.trainable = False
 
-# Añadir capas personalizadas
-model = tf.keras.Sequential([
-    base_model,
-    layers.Dense(256, activation='relu'),
-    layers.Dropout(0.3),
-    layers.Dense(len(classes), activation='softmax')
-    ])
+# Capas personalizadas
+x = base_model.output
+x = layers.Dense(256, activation='relu')(x)
+x = layers.Dropout(0.3)(x)
+outputs = layers.Dense(len(classes), activation='softmax')(x)
 
-# Compilar
+# Crear el modelo funcional
+model = Model(inputs=inputs, outputs=outputs)
+
+# Compilar y entrenar como lo hacías
 model.compile(
     optimizer='adam',
     loss='sparse_categorical_crossentropy',
     metrics=['sparse_categorical_accuracy']
-    )
+)
 
-# Entrenar
 history = model.fit(
     train,
     epochs=15,
@@ -230,16 +227,13 @@ def plot_hist_loss(hist):
 plot_hist_loss(history)
 
 # Fine-tuning
-# Descongelar capas superiores
 base_model.trainable = True
-
-for layer in base_model.layers[:-10]:  # Descongelar solo las últimas 10 capas
+for layer in base_model.layers[:-10]:
     layer.trainable = False
 
-model.compile(optimizer=tf.keras.optimizers.Adam(1e-5), # Bajar el learning rate a 1e-5
+model.compile(optimizer=tf.keras.optimizers.Adam(1e-5),
               loss='sparse_categorical_crossentropy',
-              metrics=['sparse_categorical_accuracy']
-              )
+              metrics=['sparse_categorical_accuracy'])
 
 history_finetune = model.fit(
     train,
@@ -326,3 +320,5 @@ cm = confusion_matrix(y_true, y_pred, labels=range(len(classes)))
 cm_norm = (cm.T / cm.sum(axis=1)).T
 
 display_confusion_matrix(cm_norm, score=None, precision=None, recall=None)
+
+model.save("modelo_flores.h5")
