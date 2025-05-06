@@ -1,44 +1,108 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Clasificador de Flores</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body {
-      font-family: sans-serif;
+    #resultado {
+      font-weight: bold;
+      font-size: 2.5rem;
       text-align: center;
-      padding: 20px;
-      background: #f0f0f0;
+      min-height: 8rem;
     }
-    video, canvas {
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
-    }
-    #prediction {
+    #confidence {
       font-size: 1.5rem;
-      margin-top: 20px;
-      color: #333;
+      text-align: center;
+      color: #6c757d;
+    }
+    #model-info {
+      font-size: 1rem;
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    #camera-select {
+      margin-bottom: 10px;
+    }
+    .flower-icon {
+      font-size: 4rem;
+      display: block;
+      margin: 0 auto;
+    }
+    .camera-container {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    .camera-label {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background-color: rgba(0,0,0,0.5);
+      color: white;
+      padding: 5px 10px;
+      border-radius: 5px;
     }
   </style>
 </head>
 <body>
+  <main>
+    <div class="px-4 py-2 my-2 text-center border-bottom">
+      <h1 class="display-5 fw-bold">Clasificador de Flores</h1>
+      <div class="col-lg-6 mx-auto">
+        <p class="lead mb-0">Clasificación en tiempo real con TensorFlow.js</p>
+      </div>
+    </div>
 
-  <h1>Clasificador de Flores</h1>
+    <div class="container mt-4">
+      <div class="row justify-content-center">
+        <div class="col-12 col-md-8 text-center">
+          <!-- Camera Feed -->
+          <div class="camera-container">
+            <canvas id="canvas" width="400" height="400" class="img-fluid border rounded"></canvas>
+            <canvas id="processing-canvas" width="224" height="224" style="display: none;"></canvas>
+            <div class="camera-label">
+              <span id="facing-mode">Cámara</span>
+            </div>
+          </div>
+          
+          <!-- Camera Selection (hidden by default) -->
+          <select id="camera-select" class="form-select d-none">
+            <option value="">Seleccionar cámara...</option>
+          </select>
+          
+          <!-- Prediction Output -->
+          <div id="model-info" class="text-center">
+            <div>Modelo cargado: <span id="model-name">Clasificador de Flores</span></div>
+          </div>
+          
+          <div id="flower-icon" class="flower-icon">🌼</div>
+          <div id="resultado" class="my-3"></div>
+          <div id="confidence"></div>
+          
+          <!-- Controls -->
+          <div class="d-flex justify-content-center gap-2 mt-3">
+            <button id="switch-camera" class="btn btn-secondary">Cambiar Cámara</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
 
-  <video id="video" width="300" height="300" autoplay playsinline></video>
-  <div id="prediction">Cargando modelo...</div>
-
-  <canvas id="canvas" width="224" height="224" style="display:none;"></canvas>
-
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.5.0/dist/tf.min.js"></script>
+  
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const predictionText = document.getElementById('prediction');
-
-    let model;
-    const labels = [
+    // App State
+    const state = {
+      currentModel: null,
+      stream: null,
+      facingMode: 'environment',
+      devices: [],
+      currentDeviceId: null,
+      classNames: [
             'pink primrose', 'hard-leaved pocket orchid', 'canterbury bells', 'sweet pea', 'wild geranium',
             'tiger lily', 'moon orchid', 'bird of paradise', 'monkshood', 'globe thistle',
             'snapdragon', "colt's foot", 'king protea', 'spear thistle', 'yellow iris',
@@ -60,50 +124,230 @@
             'hippeastrum', 'bee balm', 'pink quill', 'foxglove', 'bougainvillea',
             'camellia', 'mallow', 'mexican petunia', 'bromelia', 'blanket flower',
             'trumpet creeper', 'blackberry lily', 'common tulip', 'wild rose'
-        ]; 
+        ] 
+    };
 
-    async function setupCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      return new Promise((resolve) => {
-        video.onloadedmetadata = () => resolve();
-      });
+    // DOM Elements
+    const elements = {
+      canvas: document.getElementById('canvas'),
+      processingCanvas: document.getElementById('processing-canvas'),
+      result: document.getElementById('resultado'),
+      confidence: document.getElementById('confidence'),
+      flowerIcon: document.getElementById('flower-icon'),
+      modelName: document.getElementById('model-name'),
+      facingMode: document.getElementById('facing-mode'),
+      switchCamera: document.getElementById('switch-camera'),
+      cameraSelect: document.getElementById('camera-select')
+    };
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (!checkWebGL() || !checkTFJS()) {
+        elements.result.textContent = "Tu navegador no soporta todas las características requeridas";
+        return;
+      }
+
+      elements.result.textContent = "Inicializando...";
+      
+      try {
+        await tf.ready();
+        console.log('TensorFlow.js está listo');
+        
+        // Load model
+        await loadModel();
+        
+        // Setup camera
+        await getCameraDevices();
+        if (state.devices.length > 0) {
+          state.currentDeviceId = state.devices[0].deviceId;
+          populateCameraSelect();
+        }
+        await setupCamera();
+        
+        setupEventListeners();
+        predict();
+
+      } catch (error) {
+        console.error("Initialization error:", error);
+        elements.result.textContent = `Error: ${error.message}`;
+      }
+    });
+
+    function checkWebGL() {
+      const gl = document.createElement('canvas').getContext('webgl');
+      if (!gl) {
+        alert('WebGL no está disponible en tu navegador. La aplicación puede no funcionar correctamente.');
+        return false;
+      }
+      return true;
+    }
+
+    function checkTFJS() {
+      if (!tf || !tf.browser || !tf.loadGraphModel) {
+        alert('TensorFlow.js no está cargado correctamente. Recarga la página.');
+        return false;
+      }
+      return true;
     }
 
     async function loadModel() {
+      const modelPath = 'modelo/model.json';
+      
       try {
-        model = await tf.loadLayersModel('modelo/model.json');
-        predictionText.textContent = "Modelo cargado. Realizando predicciones...";
-        startPredicting();
+        // Verificar que el modelo existe
+        const response = await fetch(modelPath);
+        if (!response.ok) {
+          throw new Error(`Modelo no encontrado en ${modelPath}`);
+        }
+
+        // Cargar el modelo
+        state.currentModel = await tf.loadGraphModel(modelPath);
+        
+        // Verificar la forma de entrada
+        if (!state.currentModel.inputs[0].shape) {
+          console.warn('El modelo no tiene forma de entrada definida, asignando [1,224,224,3]');
+          state.currentModel.inputs[0].shape = [1, 224, 224, 3];
+        }
+        
+        console.log('Modelo de flores cargado correctamente');
+        
       } catch (error) {
-        predictionText.textContent = "Error al cargar el modelo.";
-        console.error("Error al cargar el modelo:", error);
+        console.error('Error cargando el modelo:', error);
+        throw error;
       }
     }
 
+    async function setupCamera() {
+      if (state.stream) {
+        state.stream.getTracks().forEach(track => track.stop());
+      }
+
+      const constraints = {
+        video: {
+          width: { ideal: 400 },
+          height: { ideal: 400 },
+          facingMode: isMobile() ? state.facingMode : 'user',
+          deviceId: state.currentDeviceId ? { exact: state.currentDeviceId } : undefined
+        }
+      };
+
+      try {
+        state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+        startVideoStream();
+      } catch (err) {
+        console.error("Camera error:", err);
+        elements.result.textContent = "Error al acceder a la cámara";
+      }
+    }
+
+    function isMobile() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    function startVideoStream() {
+      const video = document.createElement('video');
+      video.srcObject = state.stream;
+      video.autoplay = true;
+      
+      video.onloadedmetadata = () => {
+        const ctx = elements.canvas.getContext('2d');
+        const processingCtx = elements.processingCanvas.getContext('2d');
+        
+        function draw() {
+          if (video.readyState >= 2) {
+            ctx.drawImage(video, 0, 0, elements.canvas.width, elements.canvas.height);
+            processingCtx.drawImage(video, 0, 0, 224, 224);
+          }
+          requestAnimationFrame(draw);
+        }
+        
+        video.play();
+        draw();
+      };
+    }
+
+    function prepareImage() {
+      return tf.tidy(() => {
+        return tf.browser.fromPixels(elements.processingCanvas)
+          .toFloat()
+          .div(255.0)
+          .reshape([1, 224, 224, 3]);
+      });
+    }
+
+    function updateUI(predictions) {
+      // Obtener el índice de la clase con mayor probabilidad
+      const maxIndex = predictions.indexOf(Math.max(...predictions));
+      const confidence = (predictions[maxIndex] * 100).toFixed(1);
+      
+      // Actualizar la interfaz
+      elements.result.textContent = state.classNames[maxIndex];
+      elements.confidence.textContent = `${confidence}% de confianza`;
+      
+      // Cambiar el icono según la flor detectada (puedes personalizar esto)
+      const icons = ['🌼', '🌱', '🌹', '🌻', '🌷']; // Ajusta según tus clases
+      elements.flowerIcon.textContent = icons[maxIndex] || '🌼';
+    }
+
     async function predict() {
-      if (!model) return;
+      if (!state.currentModel) {
+        setTimeout(predict, 100);
+        return;
+      }
 
-      ctx.drawImage(video, 0, 0, 224, 224);
-      const imgData = ctx.getImageData(0, 0, 224, 224);
-      const input = tf.browser.fromPixels(imgData).toFloat().div(255).expandDims();
-
-      const prediction = model.predict(input);
-      const predictionArray = await prediction.array();
-      const index = predictionArray[0].indexOf(Math.max(...predictionArray[0]));
-      predictionText.textContent = `Predicción: ${labels[index]}`;
+      try {
+        const inputTensor = prepareImage();
+        const predictions = await state.currentModel.executeAsync(inputTensor);
+        const predictionsData = await predictions.data();
+        inputTensor.dispose();
+        tf.dispose(predictions);
+        
+        updateUI(Array.from(predictionsData));
+      } catch (error) {
+        console.error("Prediction error:", error);
+      } finally {
+        requestAnimationFrame(predict);
+      }
     }
 
-    function startPredicting() {
-      setInterval(predict, 3000); // Cada 3 segundos
+    async function getCameraDevices() {
+      if (!navigator.mediaDevices.enumerateDevices) return;
+      
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        state.devices = devices.filter(device => device.kind === 'videoinput');
+      } catch (err) {
+        console.error("Error enumerating devices:", err);
+      }
     }
 
-    // Inicialización
-    setupCamera().then(() => {
-      video.play();
-      loadModel();
-    });
+    function populateCameraSelect() {
+      elements.cameraSelect.innerHTML = '<option value="">Seleccionar cámara...</option>';
+      state.devices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Cámara ${elements.cameraSelect.length}`;
+        elements.cameraSelect.appendChild(option);
+      });
+    }
+
+    function setupEventListeners() {
+      elements.switchCamera.addEventListener('click', switchCamera);
+      elements.cameraSelect.addEventListener('change', async (e) => {
+        state.currentDeviceId = e.target.value;
+        await setupCamera();
+      });
+    }
+
+    async function switchCamera() {
+      if (isMobile()) {
+        state.facingMode = state.facingMode === 'user' ? 'environment' : 'user';
+      } else {
+        elements.cameraSelect.classList.toggle('d-none');
+        return;
+      }
+      await setupCamera();
+    }
   </script>
-
 </body>
 </html>
