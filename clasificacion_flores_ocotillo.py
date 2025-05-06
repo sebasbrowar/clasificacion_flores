@@ -58,7 +58,8 @@ def display_confusion_matrix(cmat, score, precision, recall):
     if len(titlestring) > 0:
         ax.text(101, 1, titlestring, fontdict={'fontsize': 18, 'horizontalalignment':'right', 'verticalalignment':'top', 'color':'#804040'})
     plt.show()
-    plt.savefig('cm.jpg')
+    #plt.savefig('cm.jpg')
+    plt.close()
 
 """# Funciones Preprocesamiento"""
 
@@ -205,7 +206,7 @@ def plot_hist(hist):
     plt.ylim((0,1.1))
     plt.grid()
     plt.show()
-    plt.savefig('accuracy.jpg')
+    #plt.savefig('accuracy.jpg')
     plt.close()
 
 plot_hist(history)
@@ -221,7 +222,7 @@ def plot_hist_loss(hist):
     #plt.ylim((0,1))
     plt.grid()
     plt.show()
-    plt.savefig('loss.jpg')
+    #plt.savefig('loss.jpg')
     plt.close()
 
 plot_hist_loss(history)
@@ -255,7 +256,7 @@ def plot_hist(hist):
     plt.ylim((0,1.1))
     plt.grid()
     plt.show()
-    plt.savefig('accuracy_fine_tuning.jpg')
+    #plt.savefig('accuracy_fine_tuning.jpg')
     plt.close()
 
 plot_hist(history_finetune)
@@ -271,7 +272,7 @@ def plot_hist_loss(hist):
     #plt.ylim((0,1))
     plt.grid()
     plt.show()
-    plt.savefig('loss_fine_tuning.jpg')
+    #plt.savefig('loss_fine_tuning.jpg')
     plt.close()
 
 plot_hist_loss(history_finetune)
@@ -321,4 +322,5 @@ cm_norm = (cm.T / cm.sum(axis=1)).T
 
 display_confusion_matrix(cm_norm, score=None, precision=None, recall=None)
 
-model.save("modelo_flores.h5")
+model.save('model.keras') 
+model.export('model')
