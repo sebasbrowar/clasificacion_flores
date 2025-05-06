@@ -116,6 +116,25 @@
         let isPredicting = false;
         const emojis = ['🌷', '🌸', '🌹', '🌺', '🌻', '🌼', '💐', '🏵️'];
 
+        class Rescaling extends tf.layers.Layer {
+            constructor(config) {
+                super(config);
+                this.scale = config.scale || 1.0;
+                this.offset = config.offset || 0.0;
+            }
+
+            call(inputs) {
+                return tf.mul(inputs, this.scale).add(this.offset);
+            }
+
+            static get className() {
+                return 'Rescaling';
+            }
+        }
+
+        tf.serialization.registerClass(Rescaling);
+
+
         // 3. Cargar modelo con compatibilidad para TF 2.19
         async function loadModel() {
             try {
