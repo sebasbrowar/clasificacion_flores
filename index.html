@@ -32,34 +32,8 @@
             object-fit: cover;
             transform: scaleX(-1);
         }
-        #controls {
-            display: flex;
-            gap: 12px;
-            margin: 15px 0;
-        }
-        button {
-            background: linear-gradient(135deg, #4CAF50, #2E7D32);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 25px;
-            font-size: 15px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
-            transition: all 0.3s;
-        }
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 10px rgba(0,0,0,0.2);
-        }
-        button#switchCam {
-            background: linear-gradient(135deg, #2196F3, #0D47A1);
-        }
         #result {
-            font-size: 20px;
+            font-size: 24px;
             padding: 15px 25px;
             background: white;
             border-radius: 25px;
@@ -68,33 +42,35 @@
             min-width: 250px;
             text-align: center;
             border: 2px solid #e0e0e0;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         h1 {
             color: #2E7D32;
-            margin-bottom: 5px;
+            margin-bottom: 20px;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
         }
-        .subtitle {
-            color: #555;
-            margin-top: 0;
-            margin-bottom: 20px;
-        }
         .emoji {
-            font-size: 24px;
-            margin-right: 8px;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        .flower-name {
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        .confidence {
+            font-size: 16px;
+            color: #555;
         }
     </style>
 </head>
 <body>
     <h1>🌼 Clasificador de Flores 🌸</h1>
-    <p class="subtitle">Usando EfficientNetV2 - 224×224px</p>
     
     <div id="camera-container">
         <video id="webcam" width="224" height="224" autoplay playsinline></video>
-    </div>
-    
-    <div id="controls">
-        <button id="switchCam">🔄 Cambiar Cámara</button>
     </div>
     
     <div id="result">Cargando modelo TensorFlow.js...</div>
@@ -128,7 +104,6 @@
         // 2. Variables de estado
         let model;
         let currentStream = null;
-        let facingMode = "environment"; // 'user' para frontal, 'environment' para trasera
         let isPredicting = false;
         const emojis = ['🌷', '🌸', '🌹', '🌺', '🌻', '🌼', '💐', '🏵️'];
 
@@ -137,17 +112,17 @@
             try {
                 document.getElementById('result').textContent = "Cargando modelo...";
                 model = await tf.loadLayersModel('modelo/model.json');
-                document.getElementById('result').textContent = "Modelo listo. Enfoca una flor con la cámara";
+                document.getElementById('result').textContent = "Enfoca una flor con la cámara";
                 console.log("✅ Modelo cargado");
                 return true;
             } catch (error) {
                 console.error("❌ Error al cargar el modelo:", error);
-                document.getElementById('result').textContent = "Error al cargar el modelo. Verifica la consola.";
+                document.getElementById('result').textContent = "Error al cargar el modelo";
                 return false;
             }
         }
 
-        // 4. Configurar cámara
+        // 4. Configurar cámara (solo trasera)
         async function setupCamera() {
             stopCamera();
             
@@ -157,7 +132,7 @@
                     video: {
                         width: 224,
                         height: 224,
-                        facingMode: facingMode,
+                        facingMode: "environment", // Siempre cámara trasera
                         frameRate: { ideal: 30 }
                     }
                 };
@@ -173,7 +148,7 @@
                 });
             } catch (error) {
                 console.error("📷 Error en la cámara:", error);
-                document.getElementById('result').textContent = "No se pudo acceder a la cámara. Asegúrate de permitir los permisos.";
+                document.getElementById('result').textContent = "No se pudo acceder a la cámara trasera";
                 throw error;
             }
         }
@@ -222,8 +197,8 @@
                 // Mostrar resultado
                 resultDiv.innerHTML = `
                     <span class="emoji">${randomEmoji}</span>
-                    <strong>${flowerName}</strong><br>
-                    <small>Confianza: ${confidence}%</small>
+                    <div class="flower-name">${flowerName}</div>
+                    <div class="confidence">${confidence}% de confianza</div>
                 `;
                 
             } catch (error) {
@@ -234,15 +209,7 @@
             }
         }
 
-        // 8. Cambiar entre cámaras frontal/trasera
-        document.getElementById('switchCam').addEventListener('click', async () => {
-            facingMode = facingMode === "user" ? "environment" : "user";
-            document.getElementById('result').textContent = "Cambiando a cámara " + 
-                (facingMode === "user" ? "frontal..." : "trasera...");
-            await setupCamera();
-        });
-
-        // 9. Inicialización
+        // 8. Inicialización
         (async function init() {
             // Cargar modelo y cámara
             const modelLoaded = await loadModel();
