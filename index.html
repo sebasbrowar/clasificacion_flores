@@ -15,10 +15,11 @@
     }
     #resultado {
       font-weight: bold;
-      font-size: 2.5rem;
+      font-size: 2rem;
       text-align: center;
-      min-height: 8rem;
+      min-height: 6rem;
       color: #1b5e20;
+      margin-top: 15px;
     }
     #model-info {
       font-size: 1rem;
@@ -27,9 +28,6 @@
       border-radius: 5px;
       margin: 10px 0;
       border: 1px solid #c8e6c9;
-    }
-    #camera-select {
-      margin-bottom: 10px;
     }
     .camera-container {
       position: relative;
@@ -51,6 +49,7 @@
       background-color: #388e3c;
       color: white;
       border: none;
+      margin-top: 10px;
     }
     .btn-camera:hover {
       background-color: #2e7d32;
@@ -58,6 +57,19 @@
     }
     .border-bottom {
       border-bottom: 2px solid #388e3c !important;
+    }
+    #top-predictions {
+      margin-top: 15px;
+      text-align: left;
+    }
+    .prediction-item {
+      margin-bottom: 5px;
+    }
+    .prediction-bar {
+      height: 20px;
+      background-color: #81c784;
+      border-radius: 3px;
+      margin-top: 3px;
     }
   </style>
 </head>
@@ -82,20 +94,17 @@
             </div>
           </div>
           
-          <!-- Camera Selection (hidden by default) -->
-          <select id="camera-select" class="form-select d-none">
-            <option value="">Seleccionar cámara...</option>
-          </select>
-          
           <!-- Prediction Output -->
           <div id="model-info" class="text-center">
             <div>Modelo cargado: <span id="model-name">Clasificador de Flores</span></div>
           </div>
           
-          <div id="resultado" class="my-3"></div>
+          <div id="resultado"></div>
+          
+          <div id="top-predictions" class="px-3"></div>
           
           <!-- Controls -->
-          <div class="d-flex justify-content-center gap-2 mt-3">
+          <div class="d-flex justify-content-center gap-2">
             <button id="switch-camera" class="btn btn-camera">Cambiar Cámara</button>
           </div>
         </div>
@@ -136,7 +145,9 @@
             'hippeastrum', 'bee balm', 'pink quill', 'foxglove', 'bougainvillea',
             'camellia', 'mallow', 'mexican petunia', 'bromelia', 'blanket flower',
             'trumpet creeper', 'blackberry lily', 'common tulip', 'wild rose'
-        ] 
+        ],
+        lastPredictionTime: 0,
+        predictionInterval: 1000 // Hacer predicciones cada 1000ms (1 segundo)
     };
 
     // DOM Elements
@@ -147,7 +158,7 @@
       modelName: document.getElementById('model-name'),
       facingMode: document.getElementById('facing-mode'),
       switchCamera: document.getElementById('switch-camera'),
-      cameraSelect: document.getElementById('camera-select')
+      topPredictions: document.getElementById('top-predictions')
     };
 
     // Initialize
@@ -170,7 +181,6 @@
         await getCameraDevices();
         if (state.devices.length > 0) {
           state.currentDeviceId = state.devices[0].deviceId;
-          populateCameraSelect();
         }
         await setupCamera();
         
@@ -286,11 +296,32 @@
     }
 
     function updateUI(predictions) {
-      // Obtener el índice de la clase con mayor probabilidad
-      const maxIndex = predictions.indexOf(Math.max(...predictions));
+      // Obtener las 5 predicciones más altas
+      const top5 = Array.from(predictions)
+        .map((p, i) => ({ probability: p, className: state.classNames[i] }))
+        .sort((a, b) => b.probability - a.probability)
+        .slice(0, 5);
       
-      // Actualizar la interfaz con solo el nombre de la flor
-      elements.result.textContent = state.classNames[maxIndex];
+      // Actualizar la predicción principal
+      const topPrediction = top5[0];
+      elements.result.textContent = topPrediction.className;
+      
+      // Mostrar las 5 mejores predicciones
+      let predictionsHTML = '';
+      top5.forEach(pred => {
+        const percent = (pred.probability * 100).toFixed(1);
+        predictionsHTML += `
+          <div class="prediction-item">
+            <div class="d-flex justify-content-between">
+              <span>${pred.className}</span>
+              <span>${percent}%</span>
+            </div>
+            <div class="prediction-bar" style="width: ${percent}%"></div>
+          </div>
+        `;
+      });
+      
+      elements.topPredictions.innerHTML = predictionsHTML;
     }
 
     async function predict() {
@@ -298,6 +329,13 @@
         setTimeout(predict, 100);
         return;
       }
+
+      const now = Date.now();
+      if (now - state.lastPredictionTime < state.predictionInterval) {
+        requestAnimationFrame(predict);
+        return;
+      }
+      state.lastPredictionTime = now;
 
       try {
         const inputTensor = prepareImage();
@@ -325,30 +363,25 @@
       }
     }
 
-    function populateCameraSelect() {
-      elements.cameraSelect.innerHTML = '<option value="">Seleccionar cámara...</option>';
-      state.devices.forEach(device => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        option.text = device.label || `Cámara ${elements.cameraSelect.length}`;
-        elements.cameraSelect.appendChild(option);
-      });
-    }
-
     function setupEventListeners() {
       elements.switchCamera.addEventListener('click', switchCamera);
-      elements.cameraSelect.addEventListener('change', async (e) => {
-        state.currentDeviceId = e.target.value;
-        await setupCamera();
-      });
     }
 
     async function switchCamera() {
       if (isMobile()) {
         state.facingMode = state.facingMode === 'user' ? 'environment' : 'user';
       } else {
-        elements.cameraSelect.classList.toggle('d-none');
-        return;
+        // Para desktop, mostramos el selector de cámaras
+        if (state.devices.length > 1) {
+          const selectedDevice = prompt(
+            "Selecciona cámara:\n" + 
+            state.devices.map((d, i) => `${i+1}. ${d.label || `Cámara ${i+1}`}`).join('\n')
+          );
+          
+          if (selectedDevice && selectedDevice >= 1 && selectedDevice <= state.devices.length) {
+            state.currentDeviceId = state.devices[selectedDevice-1].deviceId;
+          }
+        }
       }
       await setupCamera();
     }
